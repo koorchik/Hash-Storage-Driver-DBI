@@ -1,111 +1,122 @@
 package Hash::Storage::Driver::DBI;
 
-use 5.006;
+use v5.10;
 use strict;
 use warnings;
 
-=head1 NAME
+use Carp qw/croak/;
+use Query::Abstract;
 
-Hash::Storage::Driver::DBI - The great new Hash::Storage::Driver::DBI!
+use base "Hash::Storage::Driver::Base";
 
-=head1 VERSION
+sub new {
+    my ($class, %args) = @_;
 
-Version 0.01
+    my $self = $class->SUPER::new(%args);
+    croak "DBH REQUIRED" unless $self->{dbh};
+    croak "TABLE REQUIRED" unless $self->{table};
 
-=cut
-
-our $VERSION = '0.01';
-
-
-=head1 SYNOPSIS
-
-Quick summary of what the module does.
-
-Perhaps a little code snippet.
-
-    use Hash::Storage::Driver::DBI;
-
-    my $foo = Hash::Storage::Driver::DBI->new();
-    ...
-
-=head1 EXPORT
-
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
-
-=head1 SUBROUTINES/METHODS
-
-=head2 function1
-
-=cut
-
-sub function1 {
+    return $self;
 }
 
-=head2 function2
-
-=cut
-
-sub function2 {
+sub init {
+    my ($self) = @_;
+    $self->{query_abstract} = Query::Abstract->new( driver => [
+        'SQL' => [ table => $self->{table} ]
+    ] );
 }
 
-=head1 AUTHOR
+sub get {
+    my ( $self, $id ) = @_;
 
-Viktor Turskyi, C<< <koorchik at cpan.org> >>
+    my $sth = $self->{dbh}->prepare_cached("SELECT * FROM $self->{table} WHERE $self->{key_column} = ?");
+    $sth->execute($id);
+    
+    my $row = $sth->fetchrow_hashref();
+    $sth->finish();
 
-=head1 BUGS
+    my $serialized = $row->{ $self->{data_column} };
+    return $self->{serializer}->deserialize($serialized);
+}
 
-Please report any bugs or feature requests to C<bug-hash-storage-driver-dbi at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Hash-Storage-Driver-DBI>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+sub set {
+    my ( $self, $id, $fields ) = @_;
+    return unless keys %$fields;
+
+    my $data = $self->get($id);
+    my $is_create =  $data ? 0 : 1;
+
+    # Prepare serialized data
+    $data ||= {};
+    @{$data}{ keys %$fields } = values %$fields;
+
+    my $serialized = $self->{serializer}->serialize($data);
+
+    # Prepare index columns
+    my @columns = grep { $_ ~~ $self->{index_columns} } keys %$fields;
+    my @values = @{$fields}{@columns};
+
+    # Add serialized column
+    push @columns, $self->{data_column};
+    push @values, $serialized;
+
+    my $sql = '';    
+    my $bind_values = [@values];
+
+    if ($is_create) {
+        my $values_cnt = @columns + 1;
+        $sql = "INSERT INTO $self->{table}(" . join(', ', @columns, $self->{key_column} ) . ") VALUES(" . join(', ', ('?')x $values_cnt) . ")";
+        push @$bind_values, $id;
+    } else {
+        my $update_str = join(', ', map { "$_=?" } @columns );
+        $sql = "UPDATE $self->{table} SET $update_str WHERE $self->{key_column} = ?";
+        push @$bind_values, $id;
+    }
+
+    my $sth = $self->{dbh}->prepare_cached($sql);
+
+    $sth->execute(@$bind_values);
+    $sth->finish();
+}
+
+sub del {
+    my ( $self, $id ) = @_;
+    my $sql = "DELETE FROM $self->{table} WHERE $self->{key_column}=?";
+
+    my $sth = $self->{dbh}->prepare_cached($sql);
+    $sth->execute($id);
+    $sth->finish();
+}
+
+sub list {
+    my ( $self, @query ) = @_;
+    
+    my ($sql, $bind_values) = $self->{query_abstract}->convert_query(@query);
+    
+    my $sth = $self->{dbh}->prepare_cached($sql);
+    $sth->execute(@$bind_values);
+
+    my $rows = $sth->fetchall_arrayref({});
+    $sth->finish();
 
 
+    return [ map { $self->{serializer}->deserialize(
+        $_->{ $self->{data_column} }
+    ) } @$rows ];
+}
+
+sub count {
+    my ( $self, $filter ) = @_;
+    my ($where_str, $bind_values) = $self->{query_abstract}->convert_filter($filter);
+
+    my $sql = "SELECT COUNT(*) FROM $self->{table} $where_str";
+
+    my $sth = $self->{dbh}->prepare_cached($sql);
+    $sth->execute(@$bind_values);
+
+    my $row = $sth->fetchrow_arrayref();
+    return $row->[0];
+} 
 
 
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc Hash::Storage::Driver::DBI
-
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker (report bugs here)
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Hash-Storage-Driver-DBI>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/Hash-Storage-Driver-DBI>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Hash-Storage-Driver-DBI>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Hash-Storage-Driver-DBI/>
-
-=back
-
-
-=head1 ACKNOWLEDGEMENTS
-
-
-=head1 LICENSE AND COPYRIGHT
-
-Copyright 2012 Viktor Turskyi.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See http://dev.perl.org/licenses/ for more information.
-
-
-=cut
-
-1; # End of Hash::Storage::Driver::DBI
+1;

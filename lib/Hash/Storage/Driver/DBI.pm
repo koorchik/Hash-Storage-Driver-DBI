@@ -9,6 +9,8 @@ use Query::Abstract;
 
 use base "Hash::Storage::Driver::Base";
 
+our $VERSION = 0.01;
+
 sub new {
     my ($class, %args) = @_;
 

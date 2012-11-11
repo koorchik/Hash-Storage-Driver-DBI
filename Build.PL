@@ -10,7 +10,8 @@ my $builder = Module::Build->new(
     dist_author         => q{Viktor Turskyi <koorchik@cpan.org>},
     dist_version_from   => 'lib/Hash/Storage/Driver/DBI.pm',
     build_requires => {
-        'Test::More' => 0,
+        'Test::More'  => 0,
+        'DBD::SQLite' => 0,
     },
     requires => {
        'perl'          => 5.010,

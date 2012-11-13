@@ -51,7 +51,6 @@ sub set {
     # Prepare serialized data
     $data ||= {};
     @{$data}{ keys %$fields } = values %$fields;
-    $data->{_id} = $id;
 
     my $serialized = $self->{serializer}->serialize($data);
 

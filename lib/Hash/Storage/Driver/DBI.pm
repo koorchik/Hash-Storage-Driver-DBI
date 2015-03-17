@@ -1,5 +1,7 @@
 package Hash::Storage::Driver::DBI;
 
+our $VERSION = 0.01;
+
 use v5.10;
 use strict;
 use warnings;
@@ -8,8 +10,6 @@ use Carp qw/croak/;
 use Query::Abstract;
 
 use base "Hash::Storage::Driver::Base";
-
-our $VERSION = 0.01;
 
 sub new {
     my ($class, %args) = @_;
@@ -33,7 +33,7 @@ sub get {
 
     my $sth = $self->{dbh}->prepare_cached("SELECT * FROM $self->{table} WHERE $self->{key_column} = ?");
     $sth->execute($id);
-    
+
     my $row = $sth->fetchrow_hashref();
     $sth->finish();
 
@@ -62,7 +62,7 @@ sub set {
     push @columns, $self->{data_column};
     push @values, $serialized;
 
-    my $sql = '';    
+    my $sql = '';
     my $bind_values = [@values];
 
     if ($is_create) {
@@ -92,9 +92,9 @@ sub del {
 
 sub list {
     my ( $self, @query ) = @_;
-    
+
     my ($sql, $bind_values) = $self->{query_abstract}->convert_query(@query);
-    
+
     my $sth = $self->{dbh}->prepare_cached($sql);
     $sth->execute(@$bind_values);
 
@@ -118,7 +118,87 @@ sub count {
 
     my $row = $sth->fetchrow_arrayref();
     return $row->[0];
-} 
+}
 
 
 1;
+
+=head1 NAME
+
+Hash::Storage::Driver::DBI - DBI driver for Hash::Storage
+
+MODULE IS IN A DEVELOPMENT STAGE. DO NOT USE IT YET.
+
+=head1 SYNOPSIS
+
+    my $st = Hash::Storage->new( driver => [ DBI => {
+        dbh           => $dbh,
+        serializer    => 'JSON',
+        table         => 'users',
+        key_column    => 'user_id',
+        data_column   => 'serialized',
+        index_columns => ['age', 'fname', 'lname', 'gender']
+    }]);
+
+    # Store hash by id
+    $st->set( 'user1' => { fname => 'Viktor', gender => 'M', age => '28' } );
+
+    # Get hash by id
+    my $user_data = $st->get('user1');
+
+    # Delete hash by id
+    $st->del('user1');
+
+=head1 DESCRIPTION
+
+Hash::Storage::Driver::DBI is a DBI Driver for Hash::Storage (multipurpose storage for hash). You can consider Hash::Storage object as a collection of hashes.
+You can use it for storing users, sessions and a lot more data.
+
+=head1 OPTIONS
+
+=head2 dbh
+
+Database handler
+
+=head2 serializer
+
+Data::Serializer driver name
+
+=head2 table
+
+Table name to save data
+
+=head2 key_column
+
+column for saving object id
+
+=head2 data_column
+
+all data will be serialized in one field.
+
+=head2 index_columns
+
+List of colums to increase searches
+
+=head1 AUTHOR
+
+"koorchik", C<< <"koorchik at cpan.org"> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to L<https://github.com/koorchik/Hash-Storage-Driver-DBI/issues>
+
+=head1 ACKNOWLEDGEMENTS
+
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2012 "koorchik".
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published
+by the Free Software Foundation; or the Artistic License.
+
+See http://dev.perl.org/licenses/ for more information.
+
+=cut

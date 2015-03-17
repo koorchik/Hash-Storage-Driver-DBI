@@ -55,7 +55,11 @@ sub set {
     my $serialized = $self->{serializer}->serialize($data);
 
     # Prepare index columns
-    my @columns = grep { $_ ~~ $self->{index_columns} } keys %$fields;
+    my @columns;
+    foreach my $column (keys %$fields) {
+        push @columns, $column if grep { $column eq $_ } @{ $self->{index_columns} || [] };
+    }
+
     my @values = @{$fields}{@columns};
 
     # Add serialized column
